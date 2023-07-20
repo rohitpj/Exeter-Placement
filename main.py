@@ -15,7 +15,7 @@ from scipy.linalg import solve_triangular as solve_ut
 import matplotlib.pyplot as plt
 from scipy.stats import expon as exp
 import pandas as pd
-import openpyxl as xl
+#import openpyxl as xl
 
 #stole all these functions hehehe
 
@@ -44,33 +44,6 @@ def mvnrnd_pre(mu, Lambda):
 def cov_mat(mat, mat_bar):
     mat = mat - mat_bar
     return mat.T @ mat
-
-def gibbs_sampling(U, V, Imax):
-    # Placeholder for the update equations
-    def update(U, V):
-        # Implement the update equations from the paper here
-        return U, V
-
-    for i in range(Imax):
-        U, V = update(U, V)
-    return np.dot(U, V)
-
-def update_hyper(U, V, Imax):
-    print("update_hyper")
-
-def BPMF(dense_mat, sparse_mat, init, rank, burn_iter, gibbs_iter):
-    #rohits
-    max_iter = burn_iter + gibbs_iter
-    dim1, dim2 = sparse_mat.shape
-    U = np.random.rand(dim1, rank)
-    V = np.random.rand(rank, dim2)
-    E = np.zeros((dim1, dim2))
-
-    mu_U = np.zeros(r)  # Mean for the Gaussian prior over U
-    lambda_U = np.eye(r)  # Precision matrix for the Gaussian prior over U
-
-    mu_V = np.zeros(r)  # Mean for the Gaussian prior over V
-    ambda_V = np.eye(r)  # Precision matrix for the Gaussian prior over V
 
     
 def exponential_prior(U, V, Gamma_U, Gamma_V,dim1, dim2):
@@ -110,11 +83,25 @@ def sample_latent_feature_vector(X, V, Hi, sigma, mu_U, lambda_U):
     mu_star = lambda_star_inv @ (mu_U @ lambda_U + sigma * XVT)
     return multivariate_normal.rvs(mean=mu_star, cov=lambda_star_inv)
 
-# Load the .xlsx file as a pandas DataFrame
-df = pd.read_excel('C:/Users/Rohit/Documents/Exeter-Placement/Archive Data/Gen_Demand_Data_Sc3_Chausey_Scenario1.xlsx')
+def BPMF(U0, V0, X, H0, Imax, beta0, d0, mu0, sigma):
+    N, r = U0.shape
+    T = V0.shape[1]
+    U = U0
+    V = V0
+    for i in range(Imax):
+        print(i)
+        HU = sample_hyperparameters(U, H0, beta0, d0, mu0)
+        for j in range(N):
+            U[j] = sample_latent_feature_vector(X[j], V, HU, sigma, HU["mu"], HU["lambda"])
+        HV = sample_hyperparameters(V.T, H0, beta0, d0, mu0)
+        for j in range(T):
+            V[:,j] = sample_latent_feature_vector(X[:,j], U, HV, sigma, HV["mu"], HV["lambda"])
+    return U, V
 
-# Convert the DataFrame to a numpy array
+# Load the .xlsx file as a pandas DataFrame
+df = pd.read_excel('C:/Users/Rohit/Documents/Summer Internship project/Exeter-Placement/Archive Data/Gen_Demand_Data_Sc3_Chausey_Scenario1.xlsx')
 X = df.values
+# Convert the DataFrame to a numpy array
 # Set the initial values for U0 and V0
 N, T = X.shape  # Assume X is your data matrix
 r = 10  # Set the rank
