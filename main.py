@@ -67,16 +67,40 @@ def sample_var_coefficients(X, time_lags, M0, Psi0, S0, nu0):
     A = np.reshape(multivariate_normal(mean=M_star.flatten(), cov=np.kron(Sigma, Psi_star_inv)).rvs(), (rank * d, rank))
 
     return A, Sigma
-
+"""
 def sample_factor_w(sparse_mat, ind, W, X, tau, mu_w, Lambda_w):
     # Compute the parameters for the conditional distributions
     dim1 = sparse_mat.shape[0]  # Number of rows in the sparse matrix
     rank = W.shape[1]  # Number of columns in W (i.e., the rank)
     for i in range(dim1):
         ind_i = ind[i, :]
+        print(ind_i.shape)
         W[i, :] = multivariate_normal(mean=((tau[i] * X[ind_i, :].T @ sparse_mat[i, ind_i] + Lambda_w @ mu_w) / (tau[i] * X[ind_i, :].T @ X[ind_i, :] + Lambda_w)).flatten(), cov=inv(tau[i] * X[ind_i, :].T @ X[ind_i, :] + Lambda_w)).rvs()
 
     return W
+"""
+
+def sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau, beta0 = 1, vargin = 0):
+    """Sampling N-by-R factor matrix W and its hyperparameters (mu_w, Lambda_w)."""
+    
+    dim1, rank = W.shape
+    W_bar = np.mean(W, axis = 0)
+    temp = dim1 / (dim1 + beta0)
+    var_W_hyper = inv(np.eye(rank) + cov_mat(W, W_bar) + temp * beta0 * np.outer(W_bar, W_bar))
+    var_Lambda_hyper = wishart.rvs(df = dim1 + rank, scale = var_W_hyper)
+    var_mu_hyper = mvnrnd_pre(temp * W_bar, (dim1 + beta0) * var_Lambda_hyper)
+    
+
+        var1 = X.T
+        var2 = kr_prod(var1, var1)
+        var3 = (var2 @ tau_ind.T).reshape([rank, rank, dim1]) + var_Lambda_hyper[:, :, None]
+        var4 = var1 @ tau_sparse_mat.T + (var_Lambda_hyper @ var_mu_hyper)[:, None]
+        for i in range(dim1):
+            W[i, :] = mvnrnd_pre(solve(var3[:, :, i], var4[:, i]), var3[:, :, i])
+
+    return W
+
+
 
 def sample_factor_x(sparse_mat, ind, time_lags, W, X, A, Sigma_inv):
     # Compute the parameters for the conditional distributions
