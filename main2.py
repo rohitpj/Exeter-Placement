@@ -101,7 +101,7 @@ class BTMF:
         # Calculate w_bar and Sw
         w_bar = np.mean(self.W, axis=0)  # Changed self.w to self.W
         Sw = np.sum((self.W - w_bar).T @ (self.W - w_bar), axis=0)  # Changed self.w to self.W
-
+        #var_S = np.eye(rank) + Z_mat.T @ Z_mat - var_M.T @ var_Psi0 @ var_M
         # Update mw, Lw, and Sw
         N = self.W.shape[0]  # Changed self.w to self.W
         b0 = 1  # This is a hyperparameter that you might need to adjust

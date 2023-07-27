@@ -28,6 +28,14 @@ def sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau, beta0 = 1, vargin = 0):
     var_W_hyper = inv(np.eye(rank) + cov_mat(W, W_bar) + temp * beta0 * np.outer(W_bar, W_bar))
     var_Lambda_hyper = wishart.rvs(df = dim1 + rank, scale = var_W_hyper)
     var_mu_hyper = mvnrnd_pre(temp * W_bar, (dim1 + beta0) * var_Lambda_hyper)
+
+    var1 = X.T
+    var2 = kr_prod(var1, var1)
+    var3 = (var2 @ tau_ind.T).reshape([rank, rank, dim1]) + var_Lambda_hyper[:, :, None]
+    var4 = var1 @ tau_sparse_mat.T + (var_Lambda_hyper @ var_mu_hyper)[:, None]
+    for i in range(dim1):
+        W[i, :] = mvnrnd_pre(solve(var3[:, :, i], var4[:, i]), var3[:, :, i])
+    
     return W
 
 def mnrnd(M, U, V):
@@ -43,6 +51,19 @@ def mnrnd(M, U, V):
     return M + P @ X0 @ Q.T
 
 def sample_var_coefficient(X, time_lags):
+    dim, rank = X.shape
+    d = time_lags.shape[0]
+    tmax = np.max(time_lags)
+    
+    Z_mat = X[tmax : dim, :]
+    Q_mat = np.zeros((dim - tmax, rank * d))
+    for k in range(d):
+        Q_mat[:, k * rank : (k + 1) * rank] = X[tmax - time_lags[k] : dim - time_lags[k], :]
+    var_Psi0 = np.eye(rank * d) + Q_mat.T @ Q_mat
+    var_Psi = inv(var_Psi0)
+    var_M = var_Psi @ Q_mat.T @ Z_mat
+    var_S = np.eye(rank) + Z_mat.T @ Z_mat - var_M.T @ var_Psi0 @ var_M
+    Sigma = invwishart.rvs(df = rank + dim - tmax, scale = var_S)
     
     return mnrnd(var_M, var_Psi, Sigma), Sigma
 
