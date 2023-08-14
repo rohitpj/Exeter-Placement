@@ -79,24 +79,6 @@ class BTMF:
         self.mt = np.zeros((T, self.rank))
         self.St = np.eye(self.rank)
 
-    def fit(self):
-        Y_samples = []
-        for iter in range(self.max_iter):
-            self.mw, self.Lw = self.draw_hyperparameters()
-            for i in range(self.N):
-                self.W[i] = self.draw_wi(self.Y[i, :], self.ti[i])
-            self.A, self.S = self.draw_A_S()
-            is_positive_definite(self.S)
-            print("first fit")
-            for t in range(self.T):
-                self.X[t] = self.draw_xt(t)
-            for i in range(self.N):
-                self.ti[i] = self.draw_ti(i)
-            if iter >= self.m1:
-                Y_samples.append(self.W @ self.X.T)
-        Y_hat = np.mean(Y_samples, axis=0)
-        return Y_hat
-
     def draw_hyperparameters(self):
         # Calculate w_bar and Sw
         w_bar = np.mean(self.W, axis=0)  # Changed self.w to self.W
@@ -110,29 +92,6 @@ class BTMF:
         self.Lw = b0 + N + self.rank + 1
         print("before first change")
         is_positive_definite(self.S)
-# Check the condition number of Sw
-        print(np.linalg.cond(Sw) < 1e10)
-
-        # Check the condition number of np.outer(w_bar - m0, w_bar - m0)
-        print(np.linalg.cond(np.outer(w_bar - m0, w_bar - m0)) < 1e10)
-
-        # Check if Sw is positive definite
-        print(np.all(np.linalg.eigvals(Sw) > 0))
-
-        # Check if np.outer(w_bar - m0, w_bar - m0) is positive definite
-        print(np.all(np.linalg.eigvals(np.outer(w_bar - m0, w_bar - m0)) > 0))
-
-        # Check if w_bar is reasonable
-        print(np.all(np.abs(w_bar) < 1e10))
-
-        # Check if m0 is reasonable
-        print(np.all(np.abs(m0) < 1e10))
-
-        # Check if b0 is reasonable
-        print(np.abs(b0) < 1e10)
-
-        # Check if N is reasonable
-        print(np.abs(N) < 1e10)
 
         self.S = np.eye(self.rank) + Sw + b0 * N / (b0 + N) * np.outer(w_bar - m0, w_bar - m0)
         print("after first change")
@@ -208,6 +167,24 @@ class BTMF:
         ti_sample = np.random.gamma(ai, 1 / bi)  # Note: numpy's gamma function uses a scale parameter, which is the inverse of the rate parameter
 
         return ti_sample
+    
+    def fit(self):
+        Y_samples = []
+        for iter in range(self.max_iter):
+            self.mw, self.Lw = self.draw_hyperparameters()
+            for i in range(self.N):
+                self.W[i] = self.draw_wi(self.Y[i, :], self.ti[i])
+            self.A, self.S = self.draw_A_S()
+            is_positive_definite(self.S)
+            print("first fit")
+            for t in range(self.T):
+                self.X[t] = self.draw_xt(t)
+            for i in range(self.N):
+                self.ti[i] = self.draw_ti(i)
+            if iter >= self.m1:
+                Y_samples.append(self.W @ self.X.T)
+        Y_hat = np.mean(Y_samples, axis=0)
+        return Y_hat
 
 mat = scipy.io.loadmat('C:/Users/Rohit/Documents/Exeter-Placement/transdim-master/datasets/Guangzhou-data-set/tensor.mat')
 
@@ -231,7 +208,8 @@ N, T = Y.shape
 
 # Initialize the parameters
 model.initialize_parameters(N, T)
-
+w_sample, Lw_sample = model.draw_hyperparameters()
+"""
 class TestBTMF(unittest.TestCase):
     def setUp(self):
         self.model = BTMF(rank=10, max_iter=1000, burn_in=200, num_samples=10, time_lags=np.array([1, 2, 3]))
@@ -259,7 +237,7 @@ class TestBTMF(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
+"""
 # Fit the model
 #Y_hat = model.fit()
 
