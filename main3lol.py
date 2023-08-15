@@ -223,6 +223,8 @@ def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, op
     d = time_lags.shape[0]
     W = init["W"]
     X = init["X"]
+    print("dense mat shape",dense_mat.shape)
+    print("spare mat shape",sparse_mat.shape)
     if np.isnan(sparse_mat).any() == False:
         ind = sparse_mat != 0
         pos_obs = np.where(ind)
@@ -234,6 +236,8 @@ def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, op
         sparse_mat[np.isnan(sparse_mat)] = 0
     dense_test = dense_mat[pos_test]
     del dense_mat
+    print("pos test", pos_test)
+    print("dense_test shape: ", dense_test.shape)
     #tau = np.ones(dim1)
     tau = np.ones((dim1, dim2))
     W_plus = np.zeros((dim1, rank))
@@ -249,6 +253,7 @@ def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, op
         A, Sigma = sample_var_coefficient(X, time_lags)
         X = new_sample_factor_x(sparse_mat, ind, time_lags, W, X, A, inv(Sigma))
         mat_hat = W @ X.T
+        print("dense test, mat_hat[pos test] shape, ", dense_test.shape, mat_hat[pos_test].shape)
         mape_loss = compute_mape(dense_test, mat_hat[pos_test])
         rmse_loss = compute_rmse(dense_test, mat_hat[pos_test])
         mape_losses.append(mape_loss)
@@ -258,17 +263,18 @@ def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, op
             X_plus += X
             A_plus += A
             mat_hat_plus += mat_hat
-        if (it + 1) % show_iter == 0 and option == "display":
-            print('Iter: {}'.format(it + 1))
-            print('MAPE: {:.6}'.format(compute_mape(dense_test, mat_hat[pos_test])))
-            print('RMSE: {:.6}'.format(compute_rmse(dense_test, mat_hat[pos_test])))
-            print()
+        print("dense test shape", dense_test.shape,"mat hat shape", mat_hat[pos_test].shape)
+        print('Iter: {}'.format(it + 1))
+        print('MAPE: {:.6}'.format(compute_mape(dense_test, mat_hat[pos_test])))
+        print('RMSE: {:.6}'.format(compute_rmse(dense_test, mat_hat[pos_test])))
+        print()
 
     W = W_plus / gibbs_iter
     X = X_plus / gibbs_iter
     A = A_plus / gibbs_iter
     mat_hat = mat_hat_plus / gibbs_iter
     print('Iter: {}'.format(it + 1))
+    print("dense test shape", dense_test.shape,"mat hat shape", mat_hat[pos_test].shape)
     print('MAPE: {:.6}'.format(compute_mape(dense_test, mat_hat[pos_test])))
     print('RMSE: {:.6}'.format(compute_rmse(dense_test, mat_hat[pos_test])))
     return mat_hat, W, X, A, mape_losses, rmse_losses
@@ -355,6 +361,8 @@ np.random.seed(1000)
 
 print("hello")
 
+#df = pd.read_excel('C:/Users/Rohit/Documents/Exeter-Placement/Archive_Data/Gen_Demand_Data_Sc3_Chausey_Scenario1.xlsx', engine='openpyxl')
+#data_array = df.values
 dense_tensor = scipy.io.loadmat('C:/Users/Rohit/Documents/Exeter-Placement/transdim-master/datasets/Guangzhou-data-set/tensor.mat')['tensor']
 dim = dense_tensor.shape
 missing_rate = 0.4 # Random missing (RM)
@@ -369,14 +377,42 @@ dim1, dim2 = sparse_mat.shape
 rank = 80
 time_lags = np.array([1, 2, 144])
 init = {"W": 0.1 * np.random.randn(dim1, rank), "X": 0.1 * np.random.randn(dim2, rank)}
-burn_iter = 200
-gibbs_iter = 50
+burn_iter = 10
+gibbs_iter = 2
 mat_hat, W, X, A, mape_losses, rmse_losses = BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter)
 new_mat_hat, new_W, new_X, new_A, new_mape_losses, new_rmse_losses = new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter)
 
 # Assuming mape_losses, new_mape_losses, rmse_losses, new_rmse_losses are lists of losses
 iterations = np.arange(1, len(mape_losses) + 1)
+"""
+import pandas as pd
+import numpy as np
+import scipy.io
+import time
 
+# Load the data
+df = pd.read_excel('C:/Users/Rohit/Documents/Exeter-Placement/Archive_Data/Gen_Demand_Data_Sc3_Chausey_Scenario1.xlsx', engine='openpyxl')
+dense_mat = df.values
+
+# Handle missing values (assuming NaN represents missing values in your .xlsx file)
+sparse_mat = np.copy(dense_mat)
+sparse_mat[np.isnan(dense_mat)] = 0  # Set NaNs to 0 for the sparse matrix
+
+# Parameters
+rank = 80
+time_lags = np.array([1, 2, 144])
+init = {"W": 0.1 * np.random.randn(dense_mat.shape[0], rank), "X": 0.1 * np.random.randn(dense_mat.shape[1], rank)}
+burn_iter = 200
+gibbs_iter = 50
+
+# Run BTMF
+start = time.time()
+mat_hat, W, X, A ,mape_losses,rmse_losses= BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter)
+end = time.time()
+
+print('Running time: %d seconds'%(end - start))
+iterations = np.arange(1, len(mape_losses) + 1)
+"""
 plt.figure()
 plt.plot(iterations, mape_losses, label='Original Method')
 plt.plot(iterations, new_mape_losses, label='New Method')

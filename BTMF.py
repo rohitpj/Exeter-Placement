@@ -9,12 +9,49 @@ from numpy.linalg import solve as solve
 from numpy.linalg import cholesky as cholesky_lower
 from scipy.linalg import cholesky as cholesky_upper
 from scipy.linalg import solve_triangular as solve_ut
+import pandas
 
 def compute_mape(var, var_hat):
+    print("var shape" ,var.shape)
+    print("var_hat shape" ,var.shape)
+    print("Zeros in var:", (var == 0).sum())
+    print("Zero values in var where mask is True:", (var == 0).sum())
+    print("NaN values in var where mask is True:", np.isnan(var).sum())
+    print("NaN values in var_hat where mask is True:", np.isnan(var_hat).sum())
+    print("var[mask]:", var)
+    print("var_hat[mask]:", var_hat)
+    print("Division:", var_hat / var)
     return np.sum(np.abs(var - var_hat) / var) / var.shape[0]
 
 def compute_rmse(var, var_hat):
     return  np.sqrt(np.sum((var - var_hat) ** 2) / var.shape[0])
+"""
+def compute_mape(var, var_hat):
+    
+    mask = ~np.isnan(var) & (var != 0)
+    answer= np.sum(np.abs(var[mask] - var_hat[mask]) / var[mask]) / np.sum(mask)
+    print("Zeros in var:", (var[mask] == 0).sum())
+    print("Zero values in var where mask is True:", (var[mask] == 0).sum())
+    print("NaN values in var where mask is True:", np.isnan(var[mask]).sum())
+    print("NaN values in var_hat where mask is True:", np.isnan(var_hat[mask]).sum())
+    print("var[mask]:", var[mask])
+    print("var_hat[mask]:", var_hat[mask])
+    print("Division:", var_hat[mask] / var[mask])
+
+    return answer
+
+def compute_rmse(var, var_hat):
+    mask = ~np.isnan(var)
+    answer= np.sqrt(np.sum((var[mask] - var_hat[mask]) ** 2) / np.sum(mask))
+    print("Zeros in var:", (var[mask] == 0).sum())
+    print("Zero values in var where mask is True:", (var[mask] == 0).sum())
+    print("NaN values in var where mask is True:", np.isnan(var[mask]).sum())
+    print("NaN values in var_hat where mask is True:", np.isnan(var_hat[mask]).sum())
+    print("var[mask]:", var[mask])
+    print("var_hat[mask]:", var_hat[mask])
+    print("Division:", var_hat[mask] / var[mask])
+    return answer
+"""
 
 def mvnrnd_pre(mu, Lambda):
     src = normrnd(size = (mu.shape[0],))
@@ -60,7 +97,8 @@ def new_sample_var_coefficient(X, time_lags):
     dim, rank = X.shape
     d = time_lags.shape[0]
     tmax = np.max(time_lags)
-    
+    print("dim:", dim)
+    print("tmax:", tmax)
     Z_mat = X[tmax : dim, :]
     Q_mat = np.zeros((dim - tmax, rank * d))
     for k in range(d):
@@ -135,6 +173,7 @@ def new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter
     new_rmse_losses = []
     W = init["W"]
     X = init["X"]
+    print("Shape of X:", X.shape)
     if np.isnan(sparse_mat).any() == False:
         ind = sparse_mat != 0
         pos_obs = np.where(ind)
@@ -144,6 +183,7 @@ def new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter
         ind = ~np.isnan(sparse_mat)
         pos_obs = np.where(ind)
         sparse_mat[np.isnan(sparse_mat)] = 0
+    print("dense shape",dense_mat.shape)
     dense_test = dense_mat[pos_test]
     del dense_mat
     tau = np.ones(dim1)
@@ -154,7 +194,7 @@ def new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter
     show_iter = 200
     mat_hat_plus = np.zeros((dim1, dim2))
     for it in range(burn_iter + gibbs_iter):
-        print(it)
+        print("Iteration: ",it)
         tau_ind = tau[:, None] * ind
         tau_sparse_mat = tau[:, None] * sparse_mat
         #Draw wi ∼N(μ∗w,(Λ∗w)−1)
@@ -173,12 +213,14 @@ def new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter
             tau = tau * np.ones(dim1)
         temp_hat += mat_hat[pos_test]
         #if iter. > m1 then Compute ̃Y = W>X. Collect sample ̃Y . end if: 
+        print("shape of stuff",dense_test.shape, temp_hat.shape)
         mape_loss = compute_mape(dense_test, mat_hat[pos_test])
         rmse_loss = compute_rmse(dense_test, mat_hat[pos_test])
         new_mape_losses.append(mape_loss)
         new_rmse_losses.append(rmse_loss)
         if (it + 1) % show_iter == 0 and it < burn_iter:
             temp_hat = temp_hat / show_iter
+            print(dense_test.shape, temp_hat.shape)
             print('Iter: {}'.format(it + 1))
             print('MAPE: {:.6}'.format(compute_mape(dense_test, temp_hat)))
             print('RMSE: {:.6}'.format(compute_rmse(dense_test, temp_hat)))
@@ -200,7 +242,7 @@ def new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter
     mat_hat[mat_hat < 0] = 0
     
     return mat_hat, W, X, A, new_mape_losses, new_rmse_losses
-
+"""
 import time
 import scipy.io
 import numpy as np
@@ -228,7 +270,41 @@ new_mat_hat, new_W, new_X, new_A, new_mape_losses, new_rmse_losses = new_BTMF(de
 
 # Assuming mape_losses, new_mape_losses, rmse_losses, new_rmse_losses are lists of losses
 iterations = np.arange(1, len(new_mape_losses) + 1)
+"""
 
+import pandas as pd
+import numpy as np
+import scipy.io
+import time
+
+# Load the data
+df = pd.read_excel('C:/Users/Rohit/Documents/Exeter-Placement/Archive_Data/Gen_Demand_Data_Sc3_Chausey_Scenario1-Copy.xlsx', engine='openpyxl')
+dense_mat = df.values
+
+# Handle missing values (assuming NaN represents missing values in your .xlsx file)
+sparse_mat = np.copy(dense_mat)
+sparse_mat[np.isnan(dense_mat)] = 0.0000001  # Set NaNs to 0 for the sparse matrix
+
+dense_mat = dense_mat.T
+sparse_mat = sparse_mat.T
+
+print("Shape of dense_mat:", dense_mat.shape)
+print("Shape of sparse_mat:", sparse_mat.shape)
+# Parameters
+rank = 80
+time_lags = np.array([1, 2, 144])
+init = {"W": 0.1 * np.random.randn(dense_mat.shape[0], rank), "X": 0.1 * np.random.randn(dense_mat.shape[1], rank)}
+burn_iter = 2
+gibbs_iter = 1
+
+# Run BTMF
+start = time.time()
+mat_hat, W, X, A, new_mape_losses, new_rmse_losses = new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter)
+end = time.time()
+iterations = np.arange(1, len(new_mape_losses) + 1)
+print('Running time: %d seconds'%(end - start))
+print((iterations))
+print((new_mape_losses))
 plt.figure()
 plt.plot(iterations, new_mape_losses, label='New Method')
 plt.title('MAPE Loss over Iterations')
