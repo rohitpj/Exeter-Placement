@@ -34,25 +34,6 @@ def cov_mat(mat, mat_bar):
     mat = mat - mat_bar
     return mat.T @ mat
 
-def sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau, beta0 = 1, vargin = 0):
-
-    dim1, rank = W.shape
-    W_bar = np.mean(W, axis = 0)
-    temp = dim1 / (dim1 + beta0)
-    var_W_hyper = inv(np.eye(rank) + cov_mat(W, W_bar) + temp * beta0 * np.outer(W_bar, W_bar))
-    var_Lambda_hyper = wishart.rvs(df = dim1 + rank, scale = var_W_hyper)
-    var_mu_hyper = mvnrnd_pre(temp * W_bar, (dim1 + beta0) * var_Lambda_hyper)
-
-    for i in range(dim1):
-        #correction 1
-        tau_ind = tau_ind.astype(bool)
-        pos0 = tau_ind[i, :]
-        Xt = X[pos0, :]
-        var_Lambda = Xt.T @ np.diag(tau[i, pos0]) @ Xt + var_Lambda_hyper
-        inv_var_Lambda = inv((var_Lambda + var_Lambda.T)/2)
-        var_mu = inv_var_Lambda @ (Xt.T @ np.diag(tau[i, pos0]) @ tau_sparse_mat[i, pos0] + var_Lambda_hyper @ var_mu_hyper)
-        W[i, :] = mvnrnd_pre(var_mu, inv_var_Lambda)
-    return W
 
 def new_sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau, beta0 = 1, vargin = 0):
     """Sampling N-by-R factor matrix W and its hyperparameters (mu_w, Lambda_w)."""
@@ -75,23 +56,6 @@ def new_sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau, beta0 = 1, vargin = 
 
     return W
 
-def sample_var_coefficient(X, time_lags):
-    dim, rank = X.shape
-    d = time_lags.shape[0]
-    tmax = np.max(time_lags)
-    
-    Z_mat = X[tmax : dim, :]
-    Q_mat = np.zeros((dim - tmax, rank * d))
-    for k in range(d):
-        Q_mat[:, k * rank : (k + 1) * rank] = X[tmax - time_lags[k] : dim - time_lags[k], :]
-    var_Psi0 = np.eye(rank * d) + Q_mat.T @ Q_mat
-    var_Psi = inv(var_Psi0)
-    var_M = var_Psi @ Q_mat.T @ Z_mat
-    var_S = np.eye(rank) + Z_mat.T @ Z_mat - var_M.T @ var_Psi0 @ var_M
-    Sigma = invwishart.rvs(df = rank + dim - tmax, scale = var_S)
-    
-    return mnrnd(var_M, var_Psi, Sigma), Sigma
-
 def new_sample_var_coefficient(X, time_lags):
     dim, rank = X.shape
     d = time_lags.shape[0]
@@ -108,59 +72,6 @@ def new_sample_var_coefficient(X, time_lags):
     Sigma = invwishart.rvs(df = rank + dim - tmax, scale = var_S)
     
     return mnrnd(var_M, var_Psi, Sigma), Sigma
-
-def sample_factor_x(tau_sparse_mat, tau_ind, time_lags, W, X, A, Lambda_x):
-    dim2, rank = X.shape
-    tmax = np.max(time_lags)
-    tmin = np.min(time_lags)
-    d = time_lags.shape[0]
-    A0 = np.dstack([A] * d)
-    for k in range(d):
-        A0[k * rank : (k + 1) * rank, :, k] = 0
-    mat0 = Lambda_x @ A.T
-    mat1 = np.einsum('kij, jt -> kit', A.reshape([d, rank, rank]), Lambda_x)
-    mat2 = np.einsum('kit, kjt -> ij', mat1, A.reshape([d, rank, rank]))
-    
-    var1 = W.T
-    var2 = kr_prod(var1, var1)
-    var3 = (var2 @ tau_ind).reshape([rank, rank, dim2]) + Lambda_x[:, :, None]
-    var4 = var1 @ tau_sparse_mat
-
-    for t in range(dim2):
-        Mt = np.zeros((rank, rank))
-        Nt = np.zeros(rank)
-        if t >= 0 and t <= tmax - 1:
-            Qt = mat0 @ X[t - time_lags, :].reshape(rank * d)
-        elif t >= tmax and t <= dim2 - tmin:
-            Qt = mat0 @ X[t - time_lags, :].reshape(rank * d)
-            index = list(range(0, d))
-            Mt = mat2.copy()
-            temp = np.zeros((rank * d, len(index)))
-            n = 0
-            for k in index:
-                #temp[n * rank : (n + 1) * rank, :] = X[t - time_lags[k], :]
-                temp[n : n + rank, :] = X[t - time_lags[k], :][None, :]
-
-
-            Nt = np.einsum('ijk, ik -> j', A0, temp)
-        elif t >= dim2 - tmin + 1 and t <= dim2 - 1:
-            index = list(np.where((t - time_lags >= 0)))[0]
-            Qt = mat0[index, :] @ X[t - time_lags[index], :].reshape(rank * len(index))
-            Mt = mat2[index, :, :][:, index, :]
-            temp = np.zeros((rank * len(index), len(index)))
-            n = 0
-            for k in index:
-                #temp[n * rank : (n + 1) * rank, :] = X[t - time_lags[k], :]
-                temp[n * rank : (n + 1) * rank, :] = X[t - time_lags[k], :][None, :]
-                n += 1
-            Nt = np.einsum('ijk, ik -> j', A0[index, :, :][:, :, index], temp)
-        elif t == dim2:
-            Qt = np.zeros(rank)
-            Mt = np.zeros((rank, rank))
-            Nt = np.zeros(rank)
-        var_mu = var4[:, t] + var3[:, :, t] @ (Qt - Mt @ X[t, :])
-        X[t, :] = mvnrnd_pre(var_mu, var3[:, :, t])
-    return X
 
 def new_sample_factor_x(tau_sparse_mat, tau_ind, time_lags, W, X, A, Lambda_x):
     dim2, rank = X.shape
@@ -214,64 +125,6 @@ def sample_precision_scalar_tau(sparse_mat, mat_hat, ind):
     var_alpha = 1e-6 + 0.5 * np.sum(ind)
     var_beta = 1e-6 + 0.5 * np.sum(((sparse_mat - mat_hat) ** 2) * ind)
     return np.random.gamma(var_alpha, 1 / var_beta)
-
-def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, option = "factor"):
-    """Bayesian Temporal Matrix Factorization, BTMF."""
-    mape_losses = []
-    rmse_losses = []
-    dim1, dim2 = sparse_mat.shape
-    d = time_lags.shape[0]
-    W = init["W"]
-    X = init["X"]
-    if np.isnan(sparse_mat).any() == False:
-        ind = sparse_mat != 0
-        pos_obs = np.where(ind)
-        pos_test = np.where((dense_mat != 0) & (sparse_mat == 0))
-    elif np.isnan(sparse_mat).any() == True:
-        pos_test = np.where((dense_mat != 0) & (np.isnan(sparse_mat)))
-        ind = ~np.isnan(sparse_mat)
-        pos_obs = np.where(ind)
-        sparse_mat[np.isnan(sparse_mat)] = 0
-    dense_test = dense_mat[pos_test]
-    del dense_mat
-    #tau = np.ones(dim1)
-    tau = np.ones((dim1, dim2))
-    W_plus = np.zeros((dim1, rank))
-    X_plus = np.zeros((dim2, rank))
-    A_plus = np.zeros((rank * d, rank))
-    temp_hat = np.zeros(len(pos_test[0]))
-    show_iter = 5
-    mat_hat_plus = np.zeros((dim1, dim2))
-    
-    for it in range(burn_iter + gibbs_iter):
-        print("Iteration: ",it)
-        W = sample_factor_w(sparse_mat, ind, W, X, tau)
-        A, Sigma = sample_var_coefficient(X, time_lags)
-        X = new_sample_factor_x(sparse_mat, ind, time_lags, W, X, A, inv(Sigma))
-        mat_hat = W @ X.T
-        mape_loss = compute_mape(dense_test, mat_hat[pos_test])
-        rmse_loss = compute_rmse(dense_test, mat_hat[pos_test])
-        mape_losses.append(mape_loss)
-        rmse_losses.append(rmse_loss)
-        if it + 1 > burn_iter:
-            W_plus += W
-            X_plus += X
-            A_plus += A
-            mat_hat_plus += mat_hat
-        if (it + 1) % show_iter == 0 and option == "display":
-            print('Iter: {}'.format(it + 1))
-            print('MAPE: {:.6}'.format(compute_mape(dense_test, mat_hat[pos_test])))
-            print('RMSE: {:.6}'.format(compute_rmse(dense_test, mat_hat[pos_test])))
-            print()
-
-    W = W_plus / gibbs_iter
-    X = X_plus / gibbs_iter
-    A = A_plus / gibbs_iter
-    mat_hat = mat_hat_plus / gibbs_iter
-    print('Iter: {}'.format(it + 1))
-    print('MAPE: {:.6}'.format(compute_mape(dense_test, mat_hat[pos_test])))
-    print('RMSE: {:.6}'.format(compute_rmse(dense_test, mat_hat[pos_test])))
-    return mat_hat, W, X, A, mape_losses, rmse_losses
 
 def new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, option = "factor"):
     """Bayesian Temporal Matrix Factorization, BTMF."""
@@ -371,14 +224,12 @@ time_lags = np.array([1, 2, 144])
 init = {"W": 0.1 * np.random.randn(dim1, rank), "X": 0.1 * np.random.randn(dim2, rank)}
 burn_iter = 200
 gibbs_iter = 50
-mat_hat, W, X, A, mape_losses, rmse_losses = BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter)
 new_mat_hat, new_W, new_X, new_A, new_mape_losses, new_rmse_losses = new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter)
 
 # Assuming mape_losses, new_mape_losses, rmse_losses, new_rmse_losses are lists of losses
-iterations = np.arange(1, len(mape_losses) + 1)
+iterations = np.arange(1, len(new_mape_losses) + 1)
 
 plt.figure()
-plt.plot(iterations, mape_losses, label='Original Method')
 plt.plot(iterations, new_mape_losses, label='New Method')
 plt.title('MAPE Loss over Iterations')
 plt.xlabel('Iteration')
@@ -387,7 +238,6 @@ plt.legend()
 plt.show()
 
 plt.figure()
-plt.plot(iterations, rmse_losses, label='Original Method')
 plt.plot(iterations, new_rmse_losses, label='New Method')
 plt.title('RMSE Loss over Iterations')
 plt.xlabel('Iteration')
