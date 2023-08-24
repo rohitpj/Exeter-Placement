@@ -161,8 +161,8 @@ def sample_factor_x(tau_sparse_mat, tau_ind, time_lags, W, X, A, Lambda_x):
         var_mu = var4[:, t] + var3[:, :, t] @ (Qt - Mt @ X[t, :])
         X[t, :] = mvnrnd_pre(var_mu, var3[:, :, t])
     return X
-
-def new_sample_factor_x(tau_sparse_mat, tau_ind, time_lags, W, X, A, Lambda_x):
+#sample_factor_x_partial(tau_sparse_mat, tau_ind, time_lags, W_plus[:, :, it], X_plus[:, :, it], A_plus[:, :, it], inv(Sigma_plus[:, :, it]), back_step)
+def new_sample_factor_x(tau_sparse_mat, tau_ind, time_lags, W,                 X,                A,                 Lambda_x):
     dim2, rank = X.shape
     tmax = np.max(time_lags)
     tmin = np.min(time_lags)
