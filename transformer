@@ -5,6 +5,11 @@ from datetime import datetime
 from distutils.util import strtobool
 import sys
 import BTMF_original
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import tensorflow as tf
+from tensorflow.keras.layers import Layer
 
 # Parameters
 # full_file_path_and_name - complete .tsf file path
@@ -196,7 +201,7 @@ train_end = 41572 - prediction_length - sequence_length
 train_data = df_scaled.iloc[:, :train_end]
 validation_data = df_scaled.iloc[:, train_end:train_end+sequence_length]
 test_data = df_scaled.iloc[:, train_end+sequence_length:train_end+2*sequence_length]
-print("test data shape",test_data.shape)
+
 def create_sequences(data, seq_length, pred_length):
     sequences = []
     target_sequences = []
@@ -209,44 +214,19 @@ def create_sequences(data, seq_length, pred_length):
 
 X_train, y_train = create_sequences(train_data, sequence_length, prediction_length)
 X_val, y_val = create_sequences(validation_data, sequence_length, prediction_length)
-"""
-def positional_encoding(seq_length, d_model):
-    position = np.arange(seq_length)[:, np.newaxis]
-    div_term = np.exp(np.arange(0, d_model, 2) * -(np.log(10000.0) / d_model))
-    pos_enc = np.zeros((seq_length, d_model))
-    pos_enc = pos_enc[np.newaxis, :, :]
-    pos_enc[:, 0::2] = np.sin(position * div_term)
-    pos_enc[:, 1::2] = np.cos(position * div_term)
-    return pos_enc
 
-def positional_encoding(seq_length, d_model):
-    position = np.arange(seq_length)[:, np.newaxis]
-    div_term = np.exp(np.arange(0, d_model, 2) * -(np.log(10000.0) / d_model))
-    pos_enc = np.zeros((seq_length, d_model))
-    pos_enc[:, 0::2] = np.sin(position * div_term)
-    pos_enc[:, 1::2] = np.cos(position * div_term)
-    return pos_enc
-
-d_model = 6  # Number of sensors
-print("sequence len",sequence_length)
-pos_enc = positional_encoding(sequence_length, d_model)
-print("position enc",pos_enc.shape,"X train shape",X_train.shape)
-X_train += pos_enc
-"""
 def positional_encoding(seq_length, d_model):
     position = np.arange(seq_length)[:, np.newaxis]
     div_term = np.exp(np.arange(0, d_model, 2) * -(np.log(10000.0) / d_model))
     pos_enc = np.zeros((d_model, seq_length))
     pos_enc[0::2, :] = np.sin(position * div_term).T
     pos_enc[1::2, :] = np.cos(position * div_term).T
-    
     return pos_enc[np.newaxis, :, :]
+
 d_model = 6  # Number of sensors
 # Generate positional encoding
 pos_enc = positional_encoding(sequence_length, d_model)
-print("position enc",pos_enc.shape,"X train shape",X_train.shape)
 # Add positional encoding to X_train
-print("VALIDATION data",validation_data.shape)
 X_val = validation_data.values[np.newaxis, :, :]
 X_train += pos_enc
 X_val += pos_enc
