@@ -215,7 +215,7 @@ def sample_precision_scalar_tau(sparse_mat, mat_hat, ind):
     var_beta = 1e-6 + 0.5 * np.sum(((sparse_mat - mat_hat) ** 2) * ind)
     return np.random.gamma(var_alpha, 1 / var_beta)
 
-def mainBTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, option = "factor"):
+def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, option = "factor"):
     """Bayesian Temporal Matrix Factorization, BTMF."""
     mape_losses = []
     rmse_losses = []
@@ -223,6 +223,8 @@ def mainBTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter
     d = time_lags.shape[0]
     W = init["W"]
     X = init["X"]
+    print("dense mat shape",dense_mat.shape)
+    print("spare mat shape",sparse_mat.shape)
     if np.isnan(sparse_mat).any() == False:
         ind = sparse_mat != 0
         pos_obs = np.where(ind)
@@ -278,7 +280,7 @@ def mainBTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter
     return mat_hat, W, X, A, mape_losses, rmse_losses
 
 def new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, option = "factor"):
-
+    """Bayesian Temporal Matrix Factorization, BTMF."""
     
     dim1, dim2 = sparse_mat.shape
     d = time_lags.shape[0]
@@ -351,8 +353,7 @@ def new_BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter
     mat_hat[mat_hat < 0] = 0
     
     return mat_hat, W, X, A, new_mape_losses, new_rmse_losses
-print("hello world")
-"""
+
 import time
 import scipy.io
 import numpy as np
@@ -383,7 +384,7 @@ new_mat_hat, new_W, new_X, new_A, new_mape_losses, new_rmse_losses = new_BTMF(de
 
 # Assuming mape_losses, new_mape_losses, rmse_losses, new_rmse_losses are lists of losses
 iterations = np.arange(1, len(mape_losses) + 1)
-
+"""
 import pandas as pd
 import numpy as np
 import scipy.io
@@ -411,7 +412,7 @@ end = time.time()
 
 print('Running time: %d seconds'%(end - start))
 iterations = np.arange(1, len(mape_losses) + 1)
-
+"""
 plt.figure()
 plt.plot(iterations, mape_losses, label='Original Method')
 plt.plot(iterations, new_mape_losses, label='New Method')
@@ -432,4 +433,3 @@ plt.show()
 end = time.time()
 
 print('Running time: %d seconds'%(end - start))
-"""
