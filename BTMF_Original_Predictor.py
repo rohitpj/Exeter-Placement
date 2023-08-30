@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.linalg import inv as inv
 from numpy.random import normal as normrnd
+from numpy.random import multivariate_normal as mvnrnd
 from scipy.linalg import khatri_rao as kr_prod
 from scipy.stats import wishart
 from scipy.stats import invwishart
@@ -9,19 +10,7 @@ from numpy.linalg import cholesky as cholesky_lower
 from scipy.linalg import cholesky as cholesky_upper
 from scipy.linalg import solve_triangular as solve_ut
 import matplotlib.pyplot as plt
-from numpy.random import multivariate_normal as mvnrnd
-
-def mnrnd(M, U, V):
-    """
-    Generate matrix normal distributed random matrix.
-    M is a m-by-n matrix, U is a m-by-m matrix, and V is a n-by-n matrix.
-    """
-    dim1, dim2 = M.shape
-    X0 = np.random.randn(dim1, dim2)
-    P = cholesky_lower(U)
-    Q = cholesky_lower(V)
-    
-    return M + P @ X0 @ Q.T
+print("hello world")
 
 def mvnrnd_pre(mu, Lambda):
     src = normrnd(size = (mu.shape[0],))
@@ -31,15 +20,6 @@ def mvnrnd_pre(mu, Lambda):
 def cov_mat(mat, mat_bar):
     mat = mat - mat_bar
     return mat.T @ mat
-
-def ar4cast(A, X, Sigma, time_lags, multi_step):
-    dim, rank = X.shape
-    d = time_lags.shape[0]
-    X_new = np.append(X, np.zeros((multi_step, rank)), axis = 0)
-    for t in range(multi_step):
-        var = A.T @ X_new[dim + t - time_lags, :].reshape(rank * d)
-        X_new[dim + t, :] = mvnrnd(var, Sigma)
-    return X_new
 
 def sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau, beta0 = 1, vargin = 0):
     """Sampling N-by-R factor matrix W and its hyperparameters (mu_w, Lambda_w)."""
@@ -51,17 +31,30 @@ def sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau, beta0 = 1, vargin = 0):
     var_Lambda_hyper = wishart.rvs(df = dim1 + rank, scale = var_W_hyper)
     var_mu_hyper = mvnrnd_pre(temp * W_bar, (dim1 + beta0) * var_Lambda_hyper)
     
-    var1 = X.T
-    var2 = kr_prod(var1, var1)
-    var3 = (var2 @ tau_ind.T).reshape([rank, rank, dim1]) + var_Lambda_hyper[:, :, None]
-    var4 = var1 @ tau_sparse_mat.T + (var_Lambda_hyper @ var_mu_hyper)[:, None]
-    for i in range(dim1):
-        W[i, :] = mvnrnd_pre(solve(var3[:, :, i], var4[:, i]), var3[:, :, i])
-
+    if dim1 * rank ** 2 > 1e+8:
+        vargin = 1
+    
+    if vargin == 0:
+        var1 = X.T
+        var2 = kr_prod(var1, var1)
+        var3 = (var2 @ tau_ind.T).reshape([rank, rank, dim1]) + var_Lambda_hyper[:, :, None]
+        var4 = var1 @ tau_sparse_mat.T + (var_Lambda_hyper @ var_mu_hyper)[:, None]
+        for i in range(dim1):
+            W[i, :] = mvnrnd_pre(solve(var3[:, :, i], var4[:, i]), var3[:, :, i])
+    elif vargin == 1:
+        for i in range(dim1):
+            pos0 = np.where(sparse_mat[i, :] != 0)
+            Xt = X[pos0[0], :]
+            var_mu = tau[i] * Xt.T @ sparse_mat[i, pos0[0]] + var_Lambda_hyper @ var_mu_hyper
+            var_Lambda = tau[i] * Xt.T @ Xt + var_Lambda_hyper
+            W[i, :] = mvnrnd_pre(solve(var_Lambda, var_mu), var_Lambda)
+    
     return W
-
 def mnrnd(M, U, V):
-
+    """
+    Generate matrix normal distributed random matrix.
+    M is a m-by-n matrix, U is a m-by-m matrix, and V is a n-by-n matrix.
+    """
     dim1, dim2 = M.shape
     X0 = np.random.randn(dim1, dim2)
     P = cholesky_lower(U)
@@ -141,80 +134,28 @@ def sample_precision_scalar_tau(sparse_mat, mat_hat, ind):
     var_beta = 1e-6 + 0.5 * np.sum(((sparse_mat - mat_hat) ** 2) * ind)
     return np.random.gamma(var_alpha, 1 / var_beta)
 
+import numpy as np
 def compute_mape(var, var_hat):
-    return np.sum(np.abs(var - var_hat) / var) / var.shape[0]
+    valid_indices = ~np.isnan(var) & ~np.isnan(var_hat) & (var != 0)
+    if valid_indices.sum() == 0:  # Check if there are valid indices
+        return np.nan
+    return np.sum(np.abs(var[valid_indices] - var_hat[valid_indices]) / var[valid_indices]) / valid_indices.sum()
 
 def compute_rmse(var, var_hat):
-    return  np.sqrt(np.sum((var - var_hat) ** 2) / var.shape[0])
+    valid_indices = ~np.isnan(var) & ~np.isnan(var_hat)
+    if valid_indices.sum() == 0:  # Check if there are valid indices
+        return np.nan
+    return np.sqrt(np.sum((var[valid_indices] - var_hat[valid_indices]) ** 2) / valid_indices.sum())
 
-"""
-def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, option = "factor"):
-    original_mat = sparse_mat.copy()
-    dim1, dim2 = sparse_mat.shape
-    #print("dense_mat shape",dense_mat.shape)
+def ar4cast(A, X, Sigma, time_lags, multi_step):
+    dim, rank = X.shape
     d = time_lags.shape[0]
-    W = init["W"]
-    X = init["X"]
+    X_new = np.append(X, np.zeros((multi_step, rank)), axis = 0)
+    for t in range(multi_step):
+        var = A.T @ X_new[dim + t - time_lags, :].reshape(rank * d)
+        X_new[dim + t, :] = mvnrnd(var, Sigma)
+    return X_new
 
-    if np.isnan(sparse_mat).any() == False:
-        ind = sparse_mat != 0
-        pos_obs = np.where(ind)
-        pos_test = np.where((dense_mat != 0) & (sparse_mat == 0))
-
-        #print("pos test  shape: ", pos_test)
-    elif np.isnan(sparse_mat).any() == True:
-        pos_test = np.where((dense_mat != 0) & (np.isnan(sparse_mat)))
-        ind = ~np.isnan(sparse_mat)
-        pos_obs = np.where(ind)
-        sparse_mat[np.isnan(sparse_mat)] = 0
-
-    dense_test = dense_mat[pos_test]
-    del dense_mat
-    tau = np.ones(dim1)
-    W_plus = np.zeros((dim1, rank))
-    X_plus = np.zeros((dim2, rank))
-    A_plus = np.zeros((rank * d, rank))
-    temp_hat = np.zeros(len(pos_test[0]))
-    show_iter = 999
-    mat_hat_plus = np.zeros((dim1, dim2))
-    for it in range(burn_iter + gibbs_iter):
-        print("BTMF Iteration:",it)
-        tau_ind = tau[:, None] * ind
-        tau_sparse_mat = tau[:, None] * sparse_mat
-        W = sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau)
-        A, Sigma = sample_var_coefficient(X, time_lags)
-        X = sample_factor_x(tau_sparse_mat, tau_ind, time_lags, W, X, A, inv(Sigma))
-        mat_hat = W @ X.T
-        if option == "factor":
-            tau = sample_precision_tau(sparse_mat, mat_hat, ind)
-        elif option == "pca":
-            tau = sample_precision_scalar_tau(sparse_mat, mat_hat, ind)
-            tau = tau * np.ones(dim1)
-        temp_hat += mat_hat[pos_test]
-        if (it + 1) % show_iter == 0 and it < burn_iter:
-            temp_hat = temp_hat / show_iter
-            print('Iter: {}'.format(it + 1))
-            print('MAPE: {:.6}'.format(compute_mape(dense_test, temp_hat)))
-            print('RMSE: {:.6}'.format(compute_rmse(dense_test, temp_hat)))
-            temp_hat = np.zeros(len(pos_test[0]))
-            print()
-        if it + 1 > burn_iter:
-            W_plus += W
-            X_plus += X
-            A_plus += A
-            mat_hat_plus += mat_hat
-    mat_hat = mat_hat_plus / gibbs_iter
-    W = W_plus / gibbs_iter
-    X = X_plus / gibbs_iter
-    A = A_plus / gibbs_iter
-    #print('Imputation MAPE: {:.6}'.format(compute_mape(dense_test, mat_hat[:, : dim2][pos_test])))
-    #print('Imputation RMSE: {:.6}'.format(compute_rmse(dense_test, mat_hat[:, : dim2][pos_test])))
-    #print()
-    mat_hat[mat_hat < 0] = 0
-    nan_positions = np.isnan(original_mat)
-    original_mat[nan_positions] = mat_hat[nan_positions]
-    return original_mat, W, X, A
-"""
 def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, multi_step = 1, option = "factor"):
     """Bayesian Temporal Matrix Factorization, BTMF."""
     
@@ -352,6 +293,8 @@ def BTMF_partial(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_
     
     return mat_hat, W_plus, X_new_plus, A_plus, Sigma_plus, tau_plus
 
+from IPython.display import display
+
 def BTMF_forecast(dense_mat, sparse_mat, pred_step, multi_step, rank, time_lags, burn_iter, gibbs_iter, option = "factor", gamma = 10):
     dim1, T = dense_mat.shape
     start_time = T - pred_step
@@ -396,6 +339,13 @@ from distutils.util import strtobool
 
 import pandas as pd
 
+
+# Converts the contents in a .tsf file into a dataframe and returns it along with other meta-data of the dataset: frequency, horizon, whether the dataset contains missing values and whether the series have equal lengths
+#
+# Parameters
+# full_file_path_and_name - complete .tsf file path
+# replace_missing_vals_with - a term to indicate the missing values in series in the returning dataframe
+# value_column_name - Any name that is preferred to have as the name of the column containing series values in the returning dataframe
 def convert_tsf_to_dataframe(full_file_path_and_name, replace_missing_vals_with="NaN", value_column_name="series_value",):
     col_names = []
     col_types = []
@@ -536,94 +486,103 @@ def convert_tsf_to_dataframe(full_file_path_and_name, replace_missing_vals_with=
             contain_equal_length,
         )
 
+
+# Example of usage
+# loaded_data, frequency, forecast_horizon, contain_missing_values, contain_equal_length = convert_tsf_to_dataframe("TSForecasting/tsf_data/sample.tsf")
+
+# print(loaded_data)
+# print(frequency)
+# print(forecast_horizon)
+# print(contain_missing_values)
+# print(contain_equal_length)
+
 import pandas as pd
 
 # Read the .tsf file
 
 # Convert to DataFrame
+def run_BTMF():
+    loaded_data, frequency, forecast_horizon, contain_missing_values, contain_equal_length = convert_tsf_to_dataframe("C:/Users/Rohit/Documents/Exeter-Placement/Challenge/phase_1 data/phase_1_data/phase_1_data.tsf")
 
-loaded_data, frequency, forecast_horizon, contain_missing_values, contain_equal_length = convert_tsf_to_dataframe("C:/Users/Rohit/Documents/Exeter-Placement/Challenge/phase_1 data/phase_1_data/phase_1_data.tsf")
+    print(loaded_data)
+    #print(loaded_data.shape,frequency, forecast_horizon, contain_missing_values, contain_equal_length)
+    building_data = loaded_data[loaded_data['series_name'].str.contains('Building')]
 
-print(loaded_data)
-#print(loaded_data.shape,frequency, forecast_horizon, contain_missing_values, contain_equal_length)
-building_data = loaded_data[loaded_data['series_name'].str.contains('Building')]
+    max_start_timestamp = building_data['start_timestamp'].max()
 
-max_start_timestamp = building_data['start_timestamp'].max()
+    building_data['num_timestamps'] = building_data['series_value'].apply(len)
 
-building_data['num_timestamps'] = building_data['series_value'].apply(len)
+    min_timestamps = building_data['num_timestamps'].min()
 
-min_timestamps = building_data['num_timestamps'].min()
+    # Trim each time series to have the same length as the shortest one
+    building_data['uniform_series'] = building_data['series_value'].apply(lambda x: x[-min_timestamps:])
 
-# Trim each time series to have the same length as the shortest one
-building_data['uniform_series'] = building_data['series_value'].apply(lambda x: x[-min_timestamps:])
+    # Update the 'num_timestamps' column to reflect the new uniform length
+    building_data['num_timestamps'] = building_data['uniform_series'].apply(len)
 
-# Update the 'num_timestamps' column to reflect the new uniform length
-building_data['num_timestamps'] = building_data['uniform_series'].apply(len)
+    import scipy.io
+    import numpy as np
+    import time
+    import datetime as dt
 
-import scipy.io
-import numpy as np
-import time
-import datetime as dt
+    # Assuming loaded_data is already prepared and is in the format of a dense matrix
+    dense_mat = building_data['uniform_series']  # Adjust this based on how you've prepared loaded_data
 
-# Assuming loaded_data is already prepared and is in the format of a dense matrix
-dense_mat = building_data['uniform_series']  # Adjust this based on how you've prepared loaded_data
+    # Assuming you want to work on a copy of the original data
 
-  # Assuming you want to work on a copy of the original data
+    list_of_arrays = [np.array(series) for series in dense_mat]
+    mape_values = []
+    rmse_values = []
+    # Stack these arrays vertically to form a 2D matrix
+    dense_mat_2d = np.vstack(list_of_arrays)
+    sparse_mat = dense_mat_2d.copy()
+    print("dense mat shape",dense_mat_2d.shape)
+    print(dense_mat_2d)
+    dense_mat_2d = np.where(dense_mat_2d == 'NaN', np.nan, dense_mat_2d).astype(float)
+    sparse_mat = np.where(sparse_mat == 'NaN', np.nan, sparse_mat).astype(float)
 
-list_of_arrays = [np.array(series) for series in dense_mat]
-mape_values = []
-rmse_values = []
-# Stack these arrays vertically to form a 2D matrix
-dense_mat_2d = np.vstack(list_of_arrays)
-sparse_mat = dense_mat_2d.copy()
-print("dense mat shape",dense_mat_2d.shape)
-print(dense_mat_2d)
-dense_mat_2d = np.where(dense_mat_2d == 'NaN', np.nan, dense_mat_2d).astype(float)
-sparse_mat = np.where(sparse_mat == 'NaN', np.nan, sparse_mat).astype(float)
-
-# Model Setting
-rank = 20
-pred_step = 2976 
-time_lags = np.array([1, 4, 96])  
-#time_lags = np.array([1, 96, 384])  # Adjust this based on the seasonality or patterns in your data#
-burn_iter = 20
-gibbs_iter = 5
-multi_step = 1
-dim1, dim2 = sparse_mat.shape
-init = {"W": 0.1 * np.random.randn(dim1, rank), "X": 0.1 * np.random.randn(dim2, rank)}
-print("starting prediction")
-# Apply BTMF forecasting for different prediction time horizons (if needed)
-
-
-start = time.time()
-print('Prediction time horizon (delta) = {}.'.format(multi_step))
-building_mat_hat, old_mape_values, old_rmse_values = BTMF_forecast(dense_mat_2d, sparse_mat, pred_step, multi_step, rank, time_lags, burn_iter, gibbs_iter)
-plt.plot(old_mape_values, marker='o', color='red')
-plt.title('Loss over Iterations')
-plt.xlabel('Iteration')
-plt.ylabel('MAPE Loss)')
-plt.grid(True)
-filename = "C:/Users/Rohit/Documents/Exeter-Placement/Results/mape_plot_" + dt.datetime.now().strftime('%Y%m%d_%H%M%S') + ".png"
-plt.savefig(filename)
-plt.show()
-
-plt.plot(old_rmse_values, marker='o', color='red')
-plt.title('Loss over Iterations')
-plt.xlabel('Iteration')
-plt.ylabel('RMSE Loss)')
-plt.grid(True)
-filename = "C:/Users/Rohit/Documents/Exeter-Placement/Results/rmse_plot_" + dt.datetime.now().strftime('%Y%m%d_%H%M%S') + ".png"
-plt.savefig(filename)
-plt.show()
-
-print(building_mat_hat)
-end = time.time()
-print('Running time: %d seconds'%(end - start))
-print()
-print(building_mat_hat.shape)
-plt.figure(figsize=(10, 5))
+    # Model Setting
+    rank = 20
+    pred_step = 2976 
+    time_lags = np.array([1, 4, 96])  
+    #time_lags = np.array([1, 96, 384])  # Adjust this based on the seasonality or patterns in your data#
+    burn_iter = 20
+    gibbs_iter = 5
+    multi_step = 1
+    dim1, dim2 = sparse_mat.shape
+    init = {"W": 0.1 * np.random.randn(dim1, rank), "X": 0.1 * np.random.randn(dim2, rank)}
+    print("starting prediction")
+    # Apply BTMF forecasting for different prediction time horizons (if needed)
 
 
-plt.tight_layout()
-plt.show()
+    start = time.time()
+    print('Prediction time horizon (delta) = {}.'.format(multi_step))
+    building_mat_hat, old_mape_values, old_rmse_values = BTMF_forecast(dense_mat_2d, sparse_mat, pred_step, multi_step, rank, time_lags, burn_iter, gibbs_iter)
+    plt.plot(old_mape_values, marker='o', color='red')
+    plt.title('Loss over Iterations')
+    plt.xlabel('Iteration')
+    plt.ylabel('MAPE Loss)')
+    plt.grid(True)
+    filename = "C:/Users/Rohit/Documents/Exeter-Placement/Results/mape_plot_" + dt.datetime.now().strftime('%Y%m%d_%H%M%S') + ".png"
+    plt.savefig(filename)
+    plt.show()
 
+    plt.plot(old_rmse_values, marker='o', color='red')
+    plt.title('Loss over Iterations')
+    plt.xlabel('Iteration')
+    plt.ylabel('RMSE Loss)')
+    plt.grid(True)
+    filename = "C:/Users/Rohit/Documents/Exeter-Placement/Results/rmse_plot_" + dt.datetime.now().strftime('%Y%m%d_%H%M%S') + ".png"
+    plt.savefig(filename)
+    plt.show()
+
+    print(building_mat_hat)
+    end = time.time()
+    print('Running time: %d seconds'%(end - start))
+    print()
+    print(building_mat_hat.shape)
+    plt.figure(figsize=(10, 5))
+
+
+    plt.tight_layout()
+    plt.show()
