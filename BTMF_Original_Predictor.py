@@ -199,9 +199,6 @@ def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, mu
         temp_hat += mat_hat[pos_test]
         if (it + 1) % show_iter == 0 and it < burn_iter:
             temp_hat = temp_hat / show_iter
-            print('Iter: {}'.format(it + 1))
-            print('MAPE: {:.6}'.format(compute_mape(dense_test, temp_hat)))
-            print('RMSE: {:.6}'.format(compute_rmse(dense_test, temp_hat)))
             temp_hat = np.zeros(len(pos_test[0]))
             print()
         if it + 1 > burn_iter:
@@ -320,18 +317,12 @@ def BTMF_forecast(dense_mat, sparse_mat, pred_step, multi_step, rank, time_lags,
             mape_values.append(mape_loss)
             rmse_loss = compute_rmse(small_dense_mat[pos], mat_hat[pos])  # or compute_mape, based on your preference
             rmse_values.append(rmse_loss)
-            if t%50 == 0:
-                print('Prediction MAPE: {:.6}'.format(mape_loss))
-                print('Prediction RMSE: {:.6}'.format(rmse_loss))
         mat_hat[:, t * multi_step : (t + 1) * multi_step] = mat[:, - multi_step :]
         #f.value = t
     small_dense_mat = dense_mat[:, start_time : T]
     pos = np.where(small_dense_mat != 0)
     mape_value = compute_mape(small_dense_mat[pos], mat_hat[pos])
     rmse_value = compute_rmse(small_dense_mat[pos], mat_hat[pos])
-    print('Prediction MAPE: {:.6}'.format(mape_value))
-    print('Prediction RMSE: {:.6}'.format(rmse_value))
-    print()
     return mat_hat, mape_values, rmse_values
 
 from datetime import datetime
@@ -504,7 +495,7 @@ import pandas as pd
 def run_BTMF():
     loaded_data, frequency, forecast_horizon, contain_missing_values, contain_equal_length = convert_tsf_to_dataframe("C:/Users/Rohit/Documents/Exeter-Placement/Challenge/phase_1 data/phase_1_data/phase_1_data.tsf")
 
-    print(loaded_data)
+
     #print(loaded_data.shape,frequency, forecast_horizon, contain_missing_values, contain_equal_length)
     building_data = loaded_data[loaded_data['series_name'].str.contains('Building')]
 
@@ -536,8 +527,6 @@ def run_BTMF():
     # Stack these arrays vertically to form a 2D matrix
     dense_mat_2d = np.vstack(list_of_arrays)
     sparse_mat = dense_mat_2d.copy()
-    print("dense mat shape",dense_mat_2d.shape)
-    print(dense_mat_2d)
     dense_mat_2d = np.where(dense_mat_2d == 'NaN', np.nan, dense_mat_2d).astype(float)
     sparse_mat = np.where(sparse_mat == 'NaN', np.nan, sparse_mat).astype(float)
 
@@ -576,7 +565,6 @@ def run_BTMF():
     plt.savefig(filename)
     plt.show()
 
-    print(building_mat_hat)
     end = time.time()
     print('Running time: %d seconds'%(end - start))
     print()

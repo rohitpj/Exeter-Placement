@@ -147,74 +147,7 @@ def compute_mape(var, var_hat):
 def compute_rmse(var, var_hat):
     return  np.sqrt(np.sum((var - var_hat) ** 2) / var.shape[0])
 
-"""
-def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, option = "factor"):
-    original_mat = sparse_mat.copy()
-    dim1, dim2 = sparse_mat.shape
-    #print("dense_mat shape",dense_mat.shape)
-    d = time_lags.shape[0]
-    W = init["W"]
-    X = init["X"]
 
-    if np.isnan(sparse_mat).any() == False:
-        ind = sparse_mat != 0
-        pos_obs = np.where(ind)
-        pos_test = np.where((dense_mat != 0) & (sparse_mat == 0))
-
-        #print("pos test  shape: ", pos_test)
-    elif np.isnan(sparse_mat).any() == True:
-        pos_test = np.where((dense_mat != 0) & (np.isnan(sparse_mat)))
-        ind = ~np.isnan(sparse_mat)
-        pos_obs = np.where(ind)
-        sparse_mat[np.isnan(sparse_mat)] = 0
-
-    dense_test = dense_mat[pos_test]
-    del dense_mat
-    tau = np.ones(dim1)
-    W_plus = np.zeros((dim1, rank))
-    X_plus = np.zeros((dim2, rank))
-    A_plus = np.zeros((rank * d, rank))
-    temp_hat = np.zeros(len(pos_test[0]))
-    show_iter = 999
-    mat_hat_plus = np.zeros((dim1, dim2))
-    for it in range(burn_iter + gibbs_iter):
-        print("BTMF Iteration:",it)
-        tau_ind = tau[:, None] * ind
-        tau_sparse_mat = tau[:, None] * sparse_mat
-        W = sample_factor_w(tau_sparse_mat, tau_ind, W, X, tau)
-        A, Sigma = sample_var_coefficient(X, time_lags)
-        X = sample_factor_x(tau_sparse_mat, tau_ind, time_lags, W, X, A, inv(Sigma))
-        mat_hat = W @ X.T
-        if option == "factor":
-            tau = sample_precision_tau(sparse_mat, mat_hat, ind)
-        elif option == "pca":
-            tau = sample_precision_scalar_tau(sparse_mat, mat_hat, ind)
-            tau = tau * np.ones(dim1)
-        temp_hat += mat_hat[pos_test]
-        if (it + 1) % show_iter == 0 and it < burn_iter:
-            temp_hat = temp_hat / show_iter
-            print('Iter: {}'.format(it + 1))
-            print('MAPE: {:.6}'.format(compute_mape(dense_test, temp_hat)))
-            print('RMSE: {:.6}'.format(compute_rmse(dense_test, temp_hat)))
-            temp_hat = np.zeros(len(pos_test[0]))
-            print()
-        if it + 1 > burn_iter:
-            W_plus += W
-            X_plus += X
-            A_plus += A
-            mat_hat_plus += mat_hat
-    mat_hat = mat_hat_plus / gibbs_iter
-    W = W_plus / gibbs_iter
-    X = X_plus / gibbs_iter
-    A = A_plus / gibbs_iter
-    #print('Imputation MAPE: {:.6}'.format(compute_mape(dense_test, mat_hat[:, : dim2][pos_test])))
-    #print('Imputation RMSE: {:.6}'.format(compute_rmse(dense_test, mat_hat[:, : dim2][pos_test])))
-    #print()
-    mat_hat[mat_hat < 0] = 0
-    nan_positions = np.isnan(original_mat)
-    original_mat[nan_positions] = mat_hat[nan_positions]
-    return original_mat, W, X, A
-"""
 def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, multi_step = 1, option = "factor"):
     """Bayesian Temporal Matrix Factorization, BTMF."""
     
@@ -258,9 +191,6 @@ def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, mu
         temp_hat += mat_hat[pos_test]
         if (it + 1) % show_iter == 0 and it < burn_iter:
             temp_hat = temp_hat / show_iter
-            print('Iter: {}'.format(it + 1))
-            print('MAPE: {:.6}'.format(compute_mape(dense_test, temp_hat)))
-            print('RMSE: {:.6}'.format(compute_rmse(dense_test, temp_hat)))
             temp_hat = np.zeros(len(pos_test[0]))
             print()
         if it + 1 > burn_iter:
@@ -273,9 +203,6 @@ def BTMF(dense_mat, sparse_mat, init, rank, time_lags, burn_iter, gibbs_iter, mu
             X_plus[:, :, it - burn_iter] = X0
             mat_new_plus += W @ X0[dim2 : dim2 + multi_step, :].T
     mat_hat = mat_hat_plus / gibbs_iter
-    #print('Imputation MAPE: {:.6}'.format(compute_mape(dense_test, mat_hat[:, : dim2][pos_test])))
-    #print('Imputation RMSE: {:.6}'.format(compute_rmse(dense_test, mat_hat[:, : dim2][pos_test])))
-    print()
     mat_hat = np.append(mat_hat, mat_new_plus / gibbs_iter, axis = 1)
     mat_hat[mat_hat < 0] = 0
     
@@ -377,18 +304,12 @@ def BTMF_forecast(dense_mat, sparse_mat, pred_step, multi_step, rank, time_lags,
             mape_values.append(mape_loss)
             rmse_loss = compute_rmse(small_dense_mat[pos], mat_hat[pos])  # or compute_mape, based on your preference
             rmse_values.append(rmse_loss)
-            if t%50 == 0:
-                print('Prediction MAPE: {:.6}'.format(mape_loss))
-                print('Prediction RMSE: {:.6}'.format(rmse_loss))
+
         mat_hat[:, t * multi_step : (t + 1) * multi_step] = mat[:, - multi_step :]
         #f.value = t
     small_dense_mat = dense_mat[:, start_time : T]
     pos = np.where(small_dense_mat != 0)
     mape_value = compute_mape(small_dense_mat[pos], mat_hat[pos])
-    rmse_value = compute_rmse(small_dense_mat[pos], mat_hat[pos])
-    print('Prediction MAPE: {:.6}'.format(mape_value))
-    print('Prediction RMSE: {:.6}'.format(rmse_value))
-    print()
     return mat_hat, mape_values, rmse_values
 
 from datetime import datetime
@@ -544,7 +465,6 @@ import pandas as pd
 
 loaded_data, frequency, forecast_horizon, contain_missing_values, contain_equal_length = convert_tsf_to_dataframe("C:/Users/Rohit/Documents/Exeter-Placement/Challenge/phase_1 data/phase_1_data/phase_1_data.tsf")
 
-print(loaded_data)
 #print(loaded_data.shape,frequency, forecast_horizon, contain_missing_values, contain_equal_length)
 building_data = loaded_data[loaded_data['series_name'].str.contains('Building')]
 
@@ -576,8 +496,6 @@ rmse_values = []
 # Stack these arrays vertically to form a 2D matrix
 dense_mat_2d = np.vstack(list_of_arrays)
 sparse_mat = dense_mat_2d.copy()
-print("dense mat shape",dense_mat_2d.shape)
-print(dense_mat_2d)
 dense_mat_2d = np.where(dense_mat_2d == 'NaN', np.nan, dense_mat_2d).astype(float)
 sparse_mat = np.where(sparse_mat == 'NaN', np.nan, sparse_mat).astype(float)
 
@@ -591,7 +509,6 @@ gibbs_iter = 5
 multi_step = 1
 dim1, dim2 = sparse_mat.shape
 init = {"W": 0.1 * np.random.randn(dim1, rank), "X": 0.1 * np.random.randn(dim2, rank)}
-print("starting prediction")
 # Apply BTMF forecasting for different prediction time horizons (if needed)
 
 
@@ -626,4 +543,3 @@ plt.figure(figsize=(10, 5))
 
 plt.tight_layout()
 plt.show()
-
